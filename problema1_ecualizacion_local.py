@@ -9,10 +9,20 @@ b. Análisis de la imagen 'Imagen_con_detalles_escondidos.tif' e identificación
 c. Estudio de la influencia del tamaño de la ventana (MxN).
 """
 
+import os
+import sys
+
+# Auto-detección del entorno virtual local (.venv) si no está activo
+for p in [
+    os.path.join(os.path.dirname(__file__), ".venv/lib/python3.9/site-packages"),
+    os.path.join(os.path.dirname(__file__), "../.venv/lib/python3.9/site-packages"),
+]:
+    if os.path.exists(p) and p not in sys.path:
+        sys.path.insert(0, os.path.abspath(p))
+
 import cv2
 import numpy as np
 import matplotlib.pyplot as plt
-import os
 import time
 
 def ecualizacion_local_histograma(img, ksize=(31, 31), border_type=cv2.BORDER_REPLICATE):
@@ -127,6 +137,34 @@ def ejecutar_analisis_problema1(custom_image_path=None):
     plt.savefig(comparativa_path, dpi=200)
     plt.close()
     print(f"\nGráfica comparativa guardada en: {comparativa_path}")
+    
+    # 3. Extracción de los 5 ROIs con zoom exacto sobre cada recuadro (62x62 px)
+    eq_optima = resultados_locales.get((31, 31), list(resultados_locales.values())[0])
+    m = 2  # Margen estético de 2 píxeles
+    rois = {
+        "roi_1_cuadrado_concentrico": (eq_optima[6-m:68+m, 6-m:68+m], "1. Cuadrado Concéntrico (Sup. Izq.)"),
+        "roi_2_linea_diagonal_45":    (eq_optima[6-m:68+m, 187-m:249+m], "2. Línea Diagonal a 45° (Sup. Der.)"),
+        "roi_3_letra_a":              (eq_optima[97-m:159+m, 97-m:159+m], "3. Letra 'a' (Centro)"),
+        "roi_4_lineas_paralelas":     (eq_optima[188-m:250+m, 6-m:68+m], "4. Líneas Paralelas (Inf. Izq.)"),
+        "roi_5_circulo_relleno":      (eq_optima[188-m:250+m, 187-m:249+m], "5. Círculo Relleno (Inf. Der.)"),
+    }
+    
+    # Guardar cada ROI individualmente
+    for fname, (crop, _) in rois.items():
+        cv2.imwrite(os.path.join(out_dir, f"{fname}.png"), crop)
+        
+    # Guardar panel con los 5 ROIs ampliados
+    plt.figure(figsize=(18, 4))
+    for idx, (_, (crop, titulo)) in enumerate(rois.items()):
+        plt.subplot(1, 5, idx + 1)
+        plt.imshow(crop, cmap="gray")
+        plt.title(titulo, fontsize=10, weight="bold")
+        plt.axis("off")
+    plt.tight_layout()
+    zoom_path = os.path.join(out_dir, "zoom_5_objetos_ocultos.png")
+    plt.savefig(zoom_path, dpi=200)
+    plt.close()
+    print(f"Panel con zoom de los 5 objetos guardado en: {zoom_path}")
     
     # Detalle de los objetos descubiertos
     print("\n" + "=" * 60)

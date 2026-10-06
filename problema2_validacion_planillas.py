@@ -12,9 +12,19 @@ c. Generación de archivo CSV por planilla con las columnas requeridas (ID, Lega
 d. Ejecución cíclica sobre las 4 imágenes (grade_sheet_1.png a grade_sheet_4.png).
 """
 
+import os
+import sys
+
+# Auto-detección del entorno virtual local (.venv) si no está activo
+for p in [
+    os.path.join(os.path.dirname(__file__), ".venv/lib/python3.9/site-packages"),
+    os.path.join(os.path.dirname(__file__), "../.venv/lib/python3.9/site-packages"),
+]:
+    if os.path.exists(p) and p not in sys.path:
+        sys.path.insert(0, os.path.abspath(p))
+
 import cv2
 import numpy as np
-import os
 import csv
 
 def detectar_rejilla_tabla(img_gray):
