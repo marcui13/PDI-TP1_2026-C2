@@ -3,6 +3,11 @@
 **Facultad de Ciencias Exactas, Ingeniería y Agrimensura (FCEIA) — Universidad Nacional de Rosario (UNR)**  
 **Año 2026 — 2° Semestre**
 
+### 👥 Integrantes del Grupo
+* **Agustín Marquardt**
+* **Damián Turco**
+* **Fabián Alvarez**
+
 ---
 
 ## 📌 Descripción del Proyecto
