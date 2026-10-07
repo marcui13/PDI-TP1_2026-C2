@@ -34,7 +34,7 @@ Este repositorio contiene la resolución integral del **Trabajo Práctico N° 1*
 | Archivo | Formato | Descripción |
 | :--- | :---: | :--- |
 | [`README.md`](README.md) | `.md` | Documentación técnica, versiones de dependencias e instrucciones de uso. |
-| [`Informe_TP1_PDI.pdf`](Informe_TP1_PDI.pdf) | `.pdf` | Informe formal de 5 páginas con desarrollo teórico, capturas intermedias, análisis y conclusiones. |
+| [`Informe_TP1_PDI.pdf`](Informe_TP1_PDI.pdf) | `.pdf` | Informe académico formal de 4 páginas con desarrollo teórico, capturas intermedias, análisis y conclusiones. |
 | [`problema1_ecualizacion_local.py`](problema1_ecualizacion_local.py) | `.py` | Script ejecutable para la resolución y análisis del Problema 1. |
 | [`problema2_validacion_planillas.py`](problema2_validacion_planillas.py) | `.py` | Script ejecutable para la validación cíclica de las planillas (Problema 2). |
 
