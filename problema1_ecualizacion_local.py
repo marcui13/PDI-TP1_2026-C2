@@ -66,6 +66,8 @@ def ecualizacion_local_histograma(img, ksize=(31, 31), border_type=cv2.BORDER_RE
             val_centro = patch[pad_y, pad_x]
             # Mapeo ecualizado al rango [0, 255]
             img_out[i, j] = np.uint8(np.round((cdf[val_centro] / total_pixels) * 255.0))
+            # Agregar calculo de la CDF min no nula e incorporarla como resta en la formula
+            # cv2.calcHist 
             
     return img_out
 
