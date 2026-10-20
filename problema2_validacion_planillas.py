@@ -244,7 +244,7 @@ def renderizar_imagen_no_aprobados(lista_no_aprobados, sheet_title):
     return canvas
 
 
-def generar_graficos_paso_a_paso(sheet_path, output_dir, mostrar=False):
+def generar_graficos_paso_a_paso(sheet_path, output_dir, mostrar=True):
     """
     Genera y guarda gráficos detallados de diagnóstico que demuestran paso a paso:
       1. Detección de rejilla: Binarización dinámica (Otsu), perfiles de proyección 1D y grilla superpuesta.
@@ -274,49 +274,48 @@ def generar_graficos_paso_a_paso(sheet_path, output_dir, mostrar=False):
 
     # (1) Imagen binarizada
     axes1[0, 0].imshow(img_th, cmap='gray')
-    axes1[0, 0].set_title(f"(1) Binarización Global Dinámica (Otsu: Píxeles < {umbral_binario:.0f})", fontsize=12, fontweight='bold')
+    axes1[0, 0].set_title(f"(1) Binarización Global Dinámica (Otsu: Píxeles < {umbral_binario:.0f})", fontsize=16, fontweight='bold')
     axes1[0, 0].axis('off')
 
     # (2) Proyección Horizontal y Umbral de Filas
-    axes1[0, 1].plot(proy_h, range(alto), color='#1f77b4', lw=1.2, label='Perfil horizontal')
-    axes1[0, 1].axvline(0.5 * ancho, color='r', linestyle='--', lw=1.5, label=f'Umbral fila = 50% ({0.5 * ancho:.0f} px)')
+    axes1[0, 1].plot(proy_h, range(alto), color='#1f77b4', lw=2.0, label='Perfil horizontal')
+    axes1[0, 1].axvline(0.5 * ancho, color='r', linestyle='--', lw=2.2, label=f'Umbral fila = 50% ({0.5 * ancho:.0f} px)')
     for f_ini, f_fin in filas:
-        axes1[0, 1].axhline((f_ini + f_fin) / 2, color='green', alpha=0.35, lw=1)
+        axes1[0, 1].axhline((f_ini + f_fin) / 2, color='green', alpha=0.45, lw=1.5)
     axes1[0, 1].invert_yaxis()
-    axes1[0, 1].set_title(f"(2) Proyección Horizontal: {len(filas)} líneas detectadas", fontsize=12, fontweight='bold')
-    axes1[0, 1].set_xlabel("Píxeles de tinta por fila (suma horizontal)")
-    axes1[0, 1].set_ylabel("Fila (Y)")
-    axes1[0, 1].legend(loc='lower right')
+    axes1[0, 1].set_title(f"(2) Proyección Horizontal: {len(filas)} líneas detectadas", fontsize=16, fontweight='bold')
+    axes1[0, 1].set_xlabel("Píxeles de tinta por fila (suma horizontal)", fontsize=13, fontweight='bold')
+    axes1[0, 1].set_ylabel("Fila (Y)", fontsize=13, fontweight='bold')
+    axes1[0, 1].tick_params(axis='both', which='major', labelsize=12)
+    axes1[0, 1].legend(loc='lower right', fontsize=12)
     axes1[0, 1].grid(True, alpha=0.3)
 
     # (3) Proyección Vertical y Umbral de Columnas
-    axes1[1, 0].plot(proy_v, color='#1f77b4', lw=1.2, label='Perfil vertical')
-    axes1[1, 0].axhline(0.4 * alto, color='r', linestyle='--', lw=1.5, label=f'Umbral col = 40% ({0.4 * alto:.0f} px)')
+    axes1[1, 0].plot(proy_v, color='#1f77b4', lw=2.0, label='Perfil vertical')
+    axes1[1, 0].axhline(0.4 * alto, color='r', linestyle='--', lw=2.2, label=f'Umbral col = 40% ({0.4 * alto:.0f} px)')
     for c_ini, c_fin in cols:
-        axes1[1, 0].axvline((c_ini + c_fin) / 2, color='green', alpha=0.35, lw=1)
-    axes1[1, 0].set_title(f"(3) Proyección Vertical: {len(cols)} líneas detectadas", fontsize=12, fontweight='bold')
-    axes1[1, 0].set_xlabel("Columna (X)")
-    axes1[1, 0].set_ylabel("Píxeles de tinta por columna (suma vertical)")
-    axes1[1, 0].legend(loc='upper right')
+        axes1[1, 0].axvline((c_ini + c_fin) / 2, color='green', alpha=0.45, lw=1.5)
+    axes1[1, 0].set_title(f"(3) Proyección Vertical: {len(cols)} líneas detectadas", fontsize=16, fontweight='bold')
+    axes1[1, 0].set_xlabel("Columna (X)", fontsize=13, fontweight='bold')
+    axes1[1, 0].set_ylabel("Píxeles de tinta por columna (suma vertical)", fontsize=13, fontweight='bold')
+    axes1[1, 0].tick_params(axis='both', which='major', labelsize=12)
+    axes1[1, 0].legend(loc='upper right', fontsize=12)
     axes1[1, 0].grid(True, alpha=0.3)
 
     # (4) Rejilla Delimitada
     grid_vis = img_bgr.copy()
     for f_ini, f_fin in filas:
-        cv2.line(grid_vis, (cols[0][0], f_ini), (cols[-1][1], f_ini), (0, 0, 255), 2)
+        cv2.line(grid_vis, (cols[0][0], f_ini), (cols[-1][1], f_ini), (0, 0, 255), 3)
     for c_ini, c_fin in cols:
-        cv2.line(grid_vis, (c_ini, filas[0][0]), (c_ini, filas[-1][1]), (255, 0, 0), 2)
+        cv2.line(grid_vis, (c_ini, filas[0][0]), (c_ini, filas[-1][1]), (255, 0, 0), 3)
     axes1[1, 1].imshow(cv2.cvtColor(grid_vis, cv2.COLOR_BGR2RGB))
-    axes1[1, 1].set_title(f"(4) Rejilla Delimitada: {len(filas)-1} filas x {len(cols)-1} columnas", fontsize=12, fontweight='bold')
+    axes1[1, 1].set_title(f"(4) Rejilla Delimitada: {len(filas)-1} filas x {len(cols)-1} columnas", fontsize=16, fontweight='bold')
     axes1[1, 1].axis('off')
 
     plt.tight_layout()
     ruta_fig1 = os.path.join(output_dir, "paso_a_paso_deteccion_rejilla.png")
     plt.savefig(ruta_fig1, dpi=200)
     print(f"Gráfico de rejilla generado: {ruta_fig1}")
-    if mostrar:
-        plt.show()
-    plt.close(fig1)
 
     # -------------------------------------------------------------------------
     # FIGURA 2: PASO A PASO DETECCIÓN Y ANÁLISIS DE CELDAS
@@ -334,7 +333,7 @@ def generar_graficos_paso_a_paso(sheet_path, output_dir, mostrar=False):
         ax = fig2.add_subplot(gs[0, i])
         ax.imshow(celdas_bin[i], cmap='gray')
         nombre_campo = campos[i] if i < len(campos) else f"Campo {i+1}"
-        ax.set_title(f"{nombre_campo}\n({celdas_bin[i].shape[0]}x{celdas_bin[i].shape[1]} px)", fontsize=10, fontweight='bold')
+        ax.set_title(f"{nombre_campo}\n({celdas_bin[i].shape[0]}x{celdas_bin[i].shape[1]} px)", fontsize=13, fontweight='bold')
         ax.axis('off')
 
     # Fila 2 Izq: Componentes Conexas y Bounding Boxes (Nombre y Apellido)
@@ -345,13 +344,13 @@ def generar_graficos_paso_a_paso(sheet_path, output_dir, mostrar=False):
     vis_nom = cv2.cvtColor((celda_nom * 255).astype(np.uint8), cv2.COLOR_GRAY2BGR)
     for idx, s in enumerate(stats_sorted):
         x, y, w, h = s[:4]
-        cv2.rectangle(vis_nom, (x, y), (x + w, y + h), (0, 255, 0), 1)
-        cv2.putText(vis_nom, str(idx + 1), (x, max(8, y - 2)), cv2.FONT_HERSHEY_SIMPLEX, 0.35, (0, 180, 255), 1)
+        cv2.rectangle(vis_nom, (x, y), (x + w, y + h), (0, 255, 0), 2)
+        cv2.putText(vis_nom, str(idx + 1), (x, max(9, y - 2)), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (0, 180, 255), 1)
 
     mitad_gs = max(6, n_plots) // 2
     ax_bb = fig2.add_subplot(gs[1, :mitad_gs])
     ax_bb.imshow(cv2.cvtColor(vis_nom, cv2.COLOR_BGR2RGB))
-    ax_bb.set_title(f"(A) Bounding Boxes y Orden Secuencial ({len(stats_sorted)} caracteres detectados)", fontsize=11, fontweight='bold')
+    ax_bb.set_title(f"(A) Bounding Boxes y Orden Secuencial ({len(stats_sorted)} caracteres detectados)", fontsize=14, fontweight='bold')
     ax_bb.axis('off')
 
     # Fila 2 Der: Análisis de Gaps Horizontales
@@ -365,14 +364,15 @@ def generar_graficos_paso_a_paso(sheet_path, output_dir, mostrar=False):
     x_gaps = [f"{i+1}-{i+2}" for i in range(len(gaps))]
     colores_gaps = ['#d9534f' if g > umbral_espacio else '#5bc0de' for g in gaps]
     bars = ax_gap.bar(x_gaps, gaps, color=colores_gaps, edgecolor='black', alpha=0.85)
-    ax_gap.axhline(umbral_espacio, color='r', linestyle='--', lw=1.5, label=f'Umbral espacio = {umbral_espacio} px')
-    ax_gap.set_title(f"(B) Análisis de Gaps Horizontales: Inter-Letra (<={umbral_espacio} px) vs Inter-Palabra (>{umbral_espacio} px)", fontsize=11, fontweight='bold')
-    ax_gap.set_xlabel("Entre componente i e i+1")
-    ax_gap.set_ylabel("Distancia horizontal (px)")
-    ax_gap.legend()
+    ax_gap.axhline(umbral_espacio, color='r', linestyle='--', lw=2.0, label=f'Umbral espacio = {umbral_espacio} px')
+    ax_gap.set_title(f"(B) Análisis de Gaps Horizontales: Inter-Letra (<={umbral_espacio} px) vs Inter-Palabra (>{umbral_espacio} px)", fontsize=13, fontweight='bold')
+    ax_gap.set_xlabel("Entre componente i e i+1", fontsize=13, fontweight='bold')
+    ax_gap.set_ylabel("Distancia horizontal (px)", fontsize=13, fontweight='bold')
+    ax_gap.tick_params(axis='both', which='major', labelsize=12)
+    ax_gap.legend(fontsize=12)
     ax_gap.grid(True, alpha=0.3, axis='y')
     for bar, g in zip(bars, gaps):
-        ax_gap.text(bar.get_x() + bar.get_width() / 2, g + 0.3, str(g), ha='center', fontsize=9, fontweight='bold')
+        ax_gap.text(bar.get_x() + bar.get_width() / 2, g + 0.3, str(g), ha='center', fontsize=12, fontweight='bold')
 
     # Fila 3: Topología de Euler y Trazo Lateral
     cond_idx = campos.index("Condición Final") if "Condición Final" in campos else -1
@@ -389,7 +389,7 @@ def generar_graficos_paso_a_paso(sheet_path, output_dir, mostrar=False):
     c1_end = max(1, max(6, n_plots) // 3)
     ax_c1 = fig2.add_subplot(gs[2, :c1_end])
     ax_c1.imshow(letra_crop, cmap='gray')
-    ax_c1.set_title(f"(C) Carácter Condición Final ({h_c}x{w_c} px)", fontsize=11, fontweight='bold')
+    ax_c1.set_title(f"(C) Carácter Condición Final ({h_c}x{w_c} px)", fontsize=14, fontweight='bold')
     ax_c1.axis('off')
 
     # 3.2: Contornos internos / externos
@@ -406,7 +406,7 @@ def generar_graficos_paso_a_paso(sheet_path, output_dir, mostrar=False):
     c2_end = max(c1_end + 1, 2 * (max(6, n_plots) // 3))
     ax_c2 = fig2.add_subplot(gs[2, c1_end:c2_end])
     ax_c2.imshow(vis_contornos)
-    ax_c2.set_title(f"(D) Topología Euler: {agujeros} cavidad(es) cerrada(s)", fontsize=11, fontweight='bold')
+    ax_c2.set_title(f"(D) Topología Euler: {agujeros} cavidad(es) cerrada(s)", fontsize=14, fontweight='bold')
     ax_c2.axis('off')
 
     # 3.3: Perfil vertical izquierdo
@@ -415,11 +415,12 @@ def generar_graficos_paso_a_paso(sheet_path, output_dir, mostrar=False):
     cobertura = franja_izq.any(axis=1).mean() if h_c > 0 else 0
 
     ax_c3 = fig2.add_subplot(gs[2, c2_end:])
-    ax_c3.barh(range(h_c), [1 if franja_izq[row, :].any() else 0 for row in range(h_c)], color='#2ca02c', edgecolor='black')
+    ax_c3.barh(range(h_c), [1 if franja_izq[row, :].any() else 0 for row in range(h_c)], color='#2ca02c', edgecolor='black', height=0.7)
     ax_c3.invert_yaxis()
-    ax_c3.set_title(f"(E) Perfil Vertical Lateral Izquierdo (Cobertura: {cobertura*100:.1f}%)", fontsize=11, fontweight='bold')
-    ax_c3.set_xlabel("Presencia de trazo")
-    ax_c3.set_ylabel("Fila del carácter (Y)")
+    ax_c3.set_title(f"(E) Perfil Vertical Lateral Izquierdo (Cobertura: {cobertura*100:.1f}%)", fontsize=14, fontweight='bold')
+    ax_c3.set_xlabel("Presencia de trazo", fontsize=13, fontweight='bold')
+    ax_c3.set_ylabel("Fila del carácter (Y)", fontsize=13, fontweight='bold')
+    ax_c3.tick_params(axis='both', which='major', labelsize=12)
     ax_c3.grid(True, alpha=0.3, axis='x')
 
     plt.tight_layout()
@@ -427,11 +428,13 @@ def generar_graficos_paso_a_paso(sheet_path, output_dir, mostrar=False):
     plt.savefig(ruta_fig2, dpi=200)
     print(f"Gráfico de celdas generado: {ruta_fig2}")
     if mostrar:
+        print("Mostrando figuras de diagnóstico en pantalla (cierre las ventanas para continuar)...")
         plt.show()
+    plt.close(fig1)
     plt.close(fig2)
 
 
-def procesar_planilla(sheet_path, output_dir):
+def procesar_planilla(sheet_path, output_dir, mostrar=False):
     """
     Procesa una planilla completa calculando todos los parámetros de forma dinámica:
     a. Valida campo por campo cada registro y muestra por consola.
@@ -516,10 +519,20 @@ def procesar_planilla(sheet_path, output_dir):
     cv2.imwrite(img_out_filename, img_no_aprobados)
     print(f"Imagen de no aprobados generada: {img_out_filename} ({len(alumnos_no_aprobados)} alumnos)")
 
+    if mostrar and len(alumnos_no_aprobados) > 0:
+        fig_na = plt.figure(figsize=(9, 8))
+        plt.imshow(cv2.cvtColor(img_no_aprobados, cv2.COLOR_BGR2RGB))
+        plt.title(f"Punto b: Alumnos No Aprobados Válidos ({sheet_name})", fontsize=12, fontweight='bold')
+        plt.axis('off')
+        plt.tight_layout()
+        print(f"Mostrando panel de no aprobados ({sheet_name}) en pantalla...")
+        plt.show()
+        plt.close(fig_na)
+
     return registros_csv, alumnos_no_aprobados
 
 
-def ejecutar_validacion_todas_las_planillas(custom_sheets=None, graficos=True, mostrar=False):
+def ejecutar_validacion_todas_las_planillas(custom_sheets=None, graficos=True, mostrar=True):
     base_dir = os.path.dirname(os.path.abspath(__file__))
     out_dir = os.path.join(base_dir, "resultados_problema2")
     os.makedirs(out_dir, exist_ok=True)
@@ -540,9 +553,10 @@ def ejecutar_validacion_todas_las_planillas(custom_sheets=None, graficos=True, m
 
     resumen_global = []
 
-    for p in planillas:
+    for idx_p, p in enumerate(planillas):
         if os.path.exists(p):
-            recs, no_aprob = procesar_planilla(p, out_dir)
+            mostrar_na = mostrar and (idx_p == 0 or len(planillas) == 1)
+            recs, no_aprob = procesar_planilla(p, out_dir, mostrar=mostrar_na)
             total_ok = sum(1 for r in recs if all(v == "OK" for k, v in r.items() if k != "ID"))
             resumen_global.append({
                 "archivo": os.path.basename(p),
@@ -571,7 +585,10 @@ if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser(description="Problema 2: Validación Automática de Planillas de Calificaciones")
     parser.add_argument("--sheets", nargs="*", default=None, help="Rutas a una o más imágenes de planillas (por defecto grade_sheet_1.png a grade_sheet_4.png)")
-    parser.add_argument("--plot", "--mostrar", action="store_true", help="Muestra interactivamente las figuras paso a paso en pantalla")
+    parser.add_argument("--no-plot", "--no-mostrar", dest="mostrar", action="store_false", default=True,
+                        help="Desactiva la visualización interactiva de gráficos en pantalla (solo los guarda)")
+    parser.add_argument("--plot", "--mostrar", dest="mostrar", action="store_true", default=True,
+                        help="Muestra interactivamente las figuras generadas en pantalla (activado por defecto)")
     parser.add_argument("--no-graficos", action="store_true", help="Desactiva la generación de imágenes de diagnóstico paso a paso")
     args = parser.parse_args()
-    ejecutar_validacion_todas_las_planillas(args.sheets, graficos=not args.no_graficos, mostrar=args.plot)
+    ejecutar_validacion_todas_las_planillas(args.sheets, graficos=not args.no_graficos, mostrar=args.mostrar)
