@@ -11,11 +11,10 @@ c. Generación de archivo CSV por planilla con las columnas requeridas (ID, Lega
    Parcial 1, Parcial 2, Parcial 3, Condición Final) y valores OK/MAL.
 d. Ejecución cíclica sobre las 4 imágenes (grade_sheet_1.png a grade_sheet_4.png).
 
-Metodología (Alineada estrictamente a Unidades 1 a 3 - Parámetros 100% Dinámicos):
+Metodología (Alineada estrictamente a Unidades 1 a 3):
 - Binarización adaptativa mediante umbral global dinámico de Otsu (Unidad 3).
 - Detección estructural de grilla y campos mediante perfiles de proyección 1D (sumas horizontales y verticales) (Unidad 1).
-- Umbral de área mínimo adaptado dinámicamente a la resolución y tamaño de los caracteres.
-- Umbral de espacio horizontal inter-palabra calibrado dinámicamente por clustering 1D (K-Means) de gaps.
+- Umbrales empíricos de celda: UMBRAL_AREA = 2 px (descarte de ruido) y UMBRAL_ESPACIO = 6 px (separación inter-palabra) determinados experimentalmente.
 - Extracción de componentes conexas ordenadas horizontalmente para conteo de caracteres y palabras (Unidad 3).
 - Clasificador topológico de condición ('L', 'R', 'A') mediante jerarquía de contornos (Euler) y trazo lateral (Unidad 3).
 - Diagnóstico visual paso a paso de la detección de rejilla y procesamiento de celdas.
@@ -38,6 +37,12 @@ for p in [
 ]:
     if os.path.exists(p) and p not in sys.path:
         sys.path.insert(0, os.path.abspath(p))
+
+# -------------------------------------------------------------------------
+# CONSTANTES EMPÍRICAS (CALIBRADAS EXPERIMENTALMENTE A PRUEBA Y ERROR)
+# -------------------------------------------------------------------------
+UMBRAL_AREA = 2       # Área mínima (px): descarta ruido puntual y restos de líneas de la grilla
+UMBRAL_ESPACIO = 6    # Separación horizontal mínima (px) para considerar una nueva palabra
 
 
 def calcular_umbral_binario(img_gray):
@@ -65,67 +70,6 @@ def determinar_campos(cols):
         return ["Legajo", "Nombre y apellido", "Condición Final"]
     num_parciales = num_campos - 3
     return ["Legajo", "Nombre y apellido"] + [f"Parcial {i + 1}" for i in range(num_parciales)] + ["Condición Final"]
-
-
-def calcular_umbrales_celda(img_th, registros_coords):
-    """
-    Calcula dinámicamente el umbral de área mínima (para filtrar ruido/restos de grilla)
-    y el umbral de espacio horizontal (para separar inter-letra de inter-palabra)
-    analizando las componentes conexas y gaps de la propia planilla.
-
-    - Umbral de área: Se calcula como una fracción del tamaño mediano de los caracteres detectados,
-      adaptándose dinámicamente a la escala y resolución de la imagen.
-    - Umbral de espacio: Se obtiene mediante agrupamiento 1D (K-Means k=2) sobre los gaps
-      horizontales de componentes consecutivas, hallando la frontera óptima entre el espacio
-      inter-carácter y el espacio inter-palabra.
-    """
-    areas = []
-    gaps = []
-
-    for celdas in registros_coords:
-        # Analizamos las celdas de texto (Legajo y Nombre y Apellido)
-        for idx_c in range(min(2, len(celdas))):
-            y0, y1, x0, x1 = celdas[idx_c]
-            celda = img_th[y0:y1, x0:x1]
-            n, _, stats, _ = cv2.connectedComponentsWithStats(celda.astype(np.uint8), 8, cv2.CV_32S)
-            s = stats[1:]
-            if len(s) == 0:
-                continue
-            areas.extend(s[:, cv2.CC_STAT_AREA].tolist())
-
-            # Para analizar gaps, usamos componentes con área preliminar > 2 px
-            s_val = s[s[:, cv2.CC_STAT_AREA] > 2]
-            if len(s_val) > 1:
-                s_val = s_val[np.argsort(s_val[:, cv2.CC_STAT_LEFT])]
-                fin_ant = s_val[:-1, cv2.CC_STAT_LEFT] + s_val[:-1, cv2.CC_STAT_WIDTH]
-                g = s_val[1:, cv2.CC_STAT_LEFT] - fin_ant
-                gaps.extend(g.tolist())
-
-    # Cálculo dinámico de umbral de área:
-    areas_validas = [a for a in areas if a > 2]
-    if len(areas_validas) > 0:
-        mediana_area = float(np.median(areas_validas))
-        umbral_area = max(2, int(round(mediana_area * 0.08)))
-    else:
-        umbral_area = 2
-
-    # Cálculo dinámico de umbral de espacio:
-    if len(gaps) > 0:
-        gaps_arr = np.array(gaps, dtype=float)
-        # K-Means 1D con 2 centroides (intra-carácter vs inter-palabra)
-        c1, c2 = float(np.min(gaps_arr)), float(np.max(gaps_arr))
-        for _ in range(10):
-            m1 = gaps_arr[np.abs(gaps_arr - c1) <= np.abs(gaps_arr - c2)]
-            m2 = gaps_arr[np.abs(gaps_arr - c1) > np.abs(gaps_arr - c2)]
-            if len(m1) > 0:
-                c1 = float(np.mean(m1))
-            if len(m2) > 0:
-                c2 = float(np.mean(m2))
-        umbral_espacio = int(round((c1 + c2) / 2))
-    else:
-        umbral_espacio = 6
-
-    return umbral_area, umbral_espacio
 
 
 def detectar_lineas(proyeccion, umbral):
@@ -171,7 +115,7 @@ def detectar_celdas(img_th):
     return filas, cols, registros_coords, campos
 
 
-def componentes(celda, umbral_area=2):
+def componentes(celda, umbral_area=UMBRAL_AREA):
     """
     Calcula las estadísticas de las componentes conexas (sin fondo ni ruido),
     ordenadas horizontalmente de izquierda a derecha.
@@ -185,7 +129,7 @@ def componentes(celda, umbral_area=2):
     return stats[np.argsort(stats[:, cv2.CC_STAT_LEFT])]
 
 
-def contar(celda, umbral_area=2, umbral_espacio=6):
+def contar(celda, umbral_area=UMBRAL_AREA, umbral_espacio=UMBRAL_ESPACIO):
     """Devuelve (cantidad de caracteres, cantidad de palabras) de una celda."""
     stats = componentes(celda, umbral_area=umbral_area)
     if len(stats) == 0:
@@ -208,7 +152,7 @@ def validar(campo, cant_caracteres, cant_palabras):
     return "OK" if ok else "MAL"
 
 
-def clasificar_condicion(celda, umbral_area=2):
+def clasificar_condicion(celda, umbral_area=UMBRAL_AREA):
     """
     Distingue determinísticamente 'L' / 'R' / 'A' por forma topológica:
      - 'L': 0 agujeros internos (Euler).
@@ -320,7 +264,8 @@ def generar_graficos_paso_a_paso(sheet_path, output_dir, mostrar=False):
     proy_h = np.sum(img_th, axis=1)
     proy_v = np.sum(img_th, axis=0)
     filas, cols, registros_coords, campos = detectar_celdas(img_th)
-    umbral_area, umbral_espacio = calcular_umbrales_celda(img_th, registros_coords)
+    umbral_area = UMBRAL_AREA
+    umbral_espacio = UMBRAL_ESPACIO
 
     # -------------------------------------------------------------------------
     # FIGURA 1: PASO A PASO DETECCIÓN DE REJILLA
@@ -508,18 +453,14 @@ def procesar_planilla(sheet_path, output_dir):
     # 2. Detección de celdas y campos dinámicos mediante proyecciones 1D
     filas, cols, registros_coords, campos = detectar_celdas(img_th)
 
-    # 3. Estimación dinámica de umbrales de ruido (área) y espacios entre palabras
-    umbral_area, umbral_espacio = calcular_umbrales_celda(img_th, registros_coords)
-
     print("\n" + "=" * 60)
     print(f"VALIDACIÓN DE PLANILLA: {sheet_name}")
-    print(f"  [Parámetros calculados dinámicamente]")
-    print(f"  - Umbral binario (Otsu): {umbral_binario:.1f}")
-    print(f"  - Umbral de área mínima: {umbral_area} px")
-    print(f"  - Umbral de espacio entre palabras: {umbral_espacio} px")
+    print(f"  [Parámetros de procesamiento]")
+    print(f"  - Umbral binario (Otsu dinámico): {umbral_binario:.1f}")
+    print(f"  - Umbral de área mínima (constante): {UMBRAL_AREA} px")
+    print(f"  - Umbral de espacio entre palabras (constante): {UMBRAL_ESPACIO} px")
     print(f"  - Campos detectados ({len(campos)}): {', '.join(campos)}")
     print("=" * 60)
-
     registros_csv = []
     alumnos_no_aprobados = []
 
@@ -533,7 +474,7 @@ def procesar_planilla(sheet_path, output_dir):
         celdas_bin = [img_th[y0:y1, x0:x1] for (y0, y1, x0, x1) in celdas_coords]
 
         for campo, celda_bin in zip(campos, celdas_bin):
-            n_chars, n_words = contar(celda_bin, umbral_area=umbral_area, umbral_espacio=umbral_espacio)
+            n_chars, n_words = contar(celda_bin)
             estado = validar(campo, n_chars, n_words)
             print(f"> {campo}: {estado}")
             estados_registro.append(estado)
@@ -549,7 +490,7 @@ def procesar_planilla(sheet_path, output_dir):
         # Punto b: Solo registros 100% OK con condición 'L' o 'R'
         if all(e == "OK" for e in estados_registro):
             cond_idx = campos.index("Condición Final") if "Condición Final" in campos else -1
-            condicion = clasificar_condicion(celdas_bin[cond_idx], umbral_area=umbral_area)
+            condicion = clasificar_condicion(celdas_bin[cond_idx])
             if condicion in ("L", "R"):
                 nom_idx = campos.index("Nombre y apellido") if "Nombre y apellido" in campos else 1
                 y0, y1, x0, x1 = celdas_coords[nom_idx]
