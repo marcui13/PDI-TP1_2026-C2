@@ -34,9 +34,11 @@ Este repositorio contiene la resolución integral del **Trabajo Práctico N° 1*
 | Archivo | Formato | Descripción |
 | :--- | :---: | :--- |
 | [`README.md`](README.md) | `.md` | Documentación técnica, versiones de dependencias e instrucciones de uso. |
-| [`Informe_TP1_PDI.pdf`](Informe_TP1_PDI.pdf) | `.pdf` | Informe académico formal de 4 páginas con desarrollo teórico, capturas intermedias, análisis y conclusiones. |
+| [`Informe_TP1_PDI.pdf`](Informe_TP1_PDI.pdf) | `.pdf` | Informe académico formal de 5 páginas con desarrollo teórico, capturas intermedias a resolución nativa, análisis y conclusiones. |
+| [`Defensa_Problema2_Validacion_Planillas.pdf`](Defensa_Problema2_Validacion_Planillas.pdf) | `.pdf` | Guía técnica y simulacro de examen oral para la defensa del Problema 2 (análisis topológico, Euler, desglose matemático de perfil lateral y justificaciones experimentales). |
 | [`problema1_ecualizacion_local.py`](problema1_ecualizacion_local.py) | `.py` | Script ejecutable para la resolución y análisis del Problema 1. |
 | [`problema2_validacion_planillas.py`](problema2_validacion_planillas.py) | `.py` | Script ejecutable para la validación cíclica de las planillas (Problema 2). |
+| [`generar_pdf_explicacion.py`](generar_pdf_explicacion.py) | `.py` | Script generador del documento técnico de defensa oral (`Defensa_Problema2_Validacion_Planillas.pdf`). |
 
 ---
 
@@ -121,9 +123,9 @@ python problema2_validacion_planillas.py --sheets grade_sheet_1.png grade_sheet_
 ### Problema 2: Validación de Planillas
 | Planilla | Resolución | Registros Evaluados | Registros Válidos (100% OK) | Alumnos No Aprobados Reportados |
 | :--- | :---: | :---: | :---: | :---: |
-| `grade_sheet_1.png` | $867 \times 1107$ | 20 | 15 | 10 (7 Libres, 3 Recuperan) |
-| `grade_sheet_2.png` | $869 \times 1029$ | 20 | 3 | 3 (2 Libres, 1 Recupera) |
-| `grade_sheet_3.png` | $869 \times 1106$ | 20 | 1 | 0 (1 Aprobado) |
+| `grade_sheet_1.png` | $867 \times 1107$ | 20 | 15 | 10 (6 Libres, 4 Recuperan) |
+| `grade_sheet_2.png` | $868 \times 1107$ | 20 | 3 | 3 (3 Libres, 0 Recuperan) |
+| `grade_sheet_3.png` | $868 \times 1107$ | 20 | 1 | 0 (1 Aprobado) |
 | `grade_sheet_4.png` | $1082 \times 917$ | 20 | 6 | 4 (2 Libres, 2 Recuperan) |
 
 Para un desglose matemático y conceptual exhaustivo con capturas de pasos intermedios, consulte el archivo **[`Informe_TP1_PDI.pdf`](Informe_TP1_PDI.pdf)**.
