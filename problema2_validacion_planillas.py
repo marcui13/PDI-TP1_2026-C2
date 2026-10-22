@@ -244,7 +244,7 @@ def renderizar_imagen_no_aprobados(lista_no_aprobados, sheet_title):
     return canvas
 
 
-def generar_graficos_paso_a_paso(sheet_path, output_dir, mostrar=True):
+def generar_graficos_paso_a_paso(sheet_path, output_dir, mostrar=True, cerrar=False):
     """
     Genera y guarda gráficos detallados de diagnóstico que demuestran paso a paso:
       1. Detección de rejilla: Binarización dinámica (Otsu), perfiles de proyección 1D y grilla superpuesta.
@@ -254,6 +254,8 @@ def generar_graficos_paso_a_paso(sheet_path, output_dir, mostrar=True):
     if img_bgr is None:
         return
     img_gray = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2GRAY)
+    sheet_name = os.path.basename(sheet_path)
+    base_name = os.path.splitext(sheet_name)[0]
 
     # 1. Binarización dinámica con Otsu (Unidad 3)
     umbral_binario = calcular_umbral_binario(img_gray)
@@ -271,6 +273,11 @@ def generar_graficos_paso_a_paso(sheet_path, output_dir, mostrar=True):
     # FIGURA 1: PASO A PASO DETECCIÓN DE REJILLA
     # -------------------------------------------------------------------------
     fig1, axes1 = plt.subplots(2, 2, figsize=(16, 12))
+    fig1.suptitle(f"Diagnóstico de Rejilla y Binarización ({sheet_name})", fontsize=18, fontweight='bold', y=0.995)
+    try:
+        fig1.canvas.manager.set_window_title(f"Rejilla - {sheet_name}")
+    except Exception:
+        pass
 
     # (1) Imagen binarizada
     axes1[0, 0].imshow(img_th, cmap='gray')
@@ -313,9 +320,12 @@ def generar_graficos_paso_a_paso(sheet_path, output_dir, mostrar=True):
     axes1[1, 1].axis('off')
 
     plt.tight_layout()
-    ruta_fig1 = os.path.join(output_dir, "paso_a_paso_deteccion_rejilla.png")
-    plt.savefig(ruta_fig1, dpi=200)
-    print(f"Gráfico de rejilla generado: {ruta_fig1}")
+    ruta_fig1_sheet = os.path.join(output_dir, f"paso_a_paso_deteccion_rejilla_{base_name}.png")
+    plt.savefig(ruta_fig1_sheet, dpi=200)
+    if base_name == "grade_sheet_1":
+        ruta_fig1_default = os.path.join(output_dir, "paso_a_paso_deteccion_rejilla.png")
+        plt.savefig(ruta_fig1_default, dpi=200)
+    print(f"Gráfico de rejilla generado: {ruta_fig1_sheet}")
 
     # -------------------------------------------------------------------------
     # FIGURA 2: PASO A PASO DETECCIÓN Y ANÁLISIS DE CELDAS
@@ -326,6 +336,11 @@ def generar_graficos_paso_a_paso(sheet_path, output_dir, mostrar=True):
 
     n_plots = len(celdas_bin)
     fig2 = plt.figure(figsize=(16, 12))
+    fig2.suptitle(f"Diagnóstico de Celdas, Gaps y Topología ({sheet_name})", fontsize=18, fontweight='bold', y=0.995)
+    try:
+        fig2.canvas.manager.set_window_title(f"Celdas y Topología - {sheet_name}")
+    except Exception:
+        pass
     gs = fig2.add_gridspec(3, max(6, n_plots), height_ratios=[1, 1.3, 1.3])
 
     # Fila 1: Celdas individuales recortadas
@@ -342,14 +357,29 @@ def generar_graficos_paso_a_paso(sheet_path, output_dir, mostrar=True):
     stats_sorted = componentes(celda_nom, umbral_area=umbral_area)
 
     vis_nom = cv2.cvtColor((celda_nom * 255).astype(np.uint8), cv2.COLOR_GRAY2BGR)
+    pad = 1  # Margen estético visual (no afecta a los cálculos matemáticos)
+    
     for idx, s in enumerate(stats_sorted):
         x, y, w, h = s[:4]
-        cv2.rectangle(vis_nom, (x, y), (x + w, y + h), (0, 255, 0), 2)
-        cv2.putText(vis_nom, str(idx + 1), (x, max(9, y - 2)), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (0, 180, 255), 1)
+        # 1. Caja verde con grosor 1 y 1 px de holgura visual
+        x0 = max(0, x - pad)
+        y0 = max(0, y - pad)
+        x1 = min(vis_nom.shape[1] - 1, x + w + pad)
+        y1 = min(vis_nom.shape[0] - 1, y + h + pad)
+        cv2.rectangle(vis_nom, (x0, y0), (x1, y1), (0, 255, 0), 1)
 
     mitad_gs = max(6, n_plots) // 2
     ax_bb = fig2.add_subplot(gs[1, :mitad_gs])
     ax_bb.imshow(cv2.cvtColor(vis_nom, cv2.COLOR_BGR2RGB))
+
+    # 2. Números dibujados en Matplotlib (centrados, nítidos y sin pisar la caja)
+    for idx, s in enumerate(stats_sorted):
+        x, y, w, h = s[:4]
+        ax_bb.text(
+            x + w / 2, y - 3, str(idx + 1),
+            color='#ffaa00', fontsize=11, fontweight='bold',
+            ha='center', va='bottom'
+        )
     ax_bb.set_title(f"(A) Bounding Boxes y Orden Secuencial ({len(stats_sorted)} caracteres detectados)", fontsize=14, fontweight='bold')
     ax_bb.axis('off')
 
@@ -424,17 +454,24 @@ def generar_graficos_paso_a_paso(sheet_path, output_dir, mostrar=True):
     ax_c3.grid(True, alpha=0.3, axis='x')
 
     plt.tight_layout()
-    ruta_fig2 = os.path.join(output_dir, "paso_a_paso_deteccion_celdas.png")
-    plt.savefig(ruta_fig2, dpi=200)
-    print(f"Gráfico de celdas generado: {ruta_fig2}")
+    ruta_fig2_sheet = os.path.join(output_dir, f"paso_a_paso_deteccion_celdas_{base_name}.png")
+    plt.savefig(ruta_fig2_sheet, dpi=200)
+    if base_name == "grade_sheet_1":
+        ruta_fig2_default = os.path.join(output_dir, "paso_a_paso_deteccion_celdas.png")
+        plt.savefig(ruta_fig2_default, dpi=200)
+    print(f"Gráfico de celdas generado: {ruta_fig2_sheet}")
+
     if mostrar:
-        print("Mostrando figuras de diagnóstico en pantalla (cierre las ventanas para continuar)...")
+        print(f"Mostrando figuras de diagnóstico ({sheet_name}) en pantalla (cierre las ventanas para continuar)...")
         plt.show()
-    plt.close(fig1)
-    plt.close(fig2)
+        plt.close(fig1)
+        plt.close(fig2)
+    elif cerrar:
+        plt.close(fig1)
+        plt.close(fig2)
 
 
-def procesar_planilla(sheet_path, output_dir, mostrar=False):
+def procesar_planilla(sheet_path, output_dir, mostrar=False, cerrar=False):
     """
     Procesa una planilla completa calculando todos los parámetros de forma dinámica:
     a. Valida campo por campo cada registro y muestra por consola.
@@ -519,14 +556,23 @@ def procesar_planilla(sheet_path, output_dir, mostrar=False):
     cv2.imwrite(img_out_filename, img_no_aprobados)
     print(f"Imagen de no aprobados generada: {img_out_filename} ({len(alumnos_no_aprobados)} alumnos)")
 
-    if mostrar and len(alumnos_no_aprobados) > 0:
-        fig_na = plt.figure(figsize=(9, 8))
-        plt.imshow(cv2.cvtColor(img_no_aprobados, cv2.COLOR_BGR2RGB))
-        plt.title(f"Punto b: Alumnos No Aprobados Válidos ({sheet_name})", fontsize=12, fontweight='bold')
-        plt.axis('off')
-        plt.tight_layout()
+    # Crear panel gráfico para visualización
+    fig_na = plt.figure(figsize=(9, 8))
+    plt.imshow(cv2.cvtColor(img_no_aprobados, cv2.COLOR_BGR2RGB))
+    cant_texto = f"{len(alumnos_no_aprobados)} alumnos" if len(alumnos_no_aprobados) > 0 else "0 alumnos (sin L o R)"
+    plt.title(f"Punto b: Alumnos No Aprobados Válidos ({sheet_name} - {cant_texto})", fontsize=13, fontweight='bold')
+    plt.axis('off')
+    plt.tight_layout()
+    try:
+        fig_na.canvas.manager.set_window_title(f"No Aprobados - {sheet_name}")
+    except Exception:
+        pass
+
+    if mostrar:
         print(f"Mostrando panel de no aprobados ({sheet_name}) en pantalla...")
         plt.show()
+        plt.close(fig_na)
+    elif cerrar:
         plt.close(fig_na)
 
     return registros_csv, alumnos_no_aprobados
@@ -544,28 +590,41 @@ def ejecutar_validacion_todas_las_planillas(custom_sheets=None, graficos=True, m
             os.path.join(base_dir, f"grade_sheet_{i}.png") for i in [1, 2, 3, 4]
         ]
 
-    # Generación de gráficos paso a paso sobre la primera planilla
-    if graficos and len(planillas) > 0 and os.path.exists(planillas[0]):
-        print("\n" + "=" * 60)
-        print(f"GENERANDO DIAGNÓSTICOS VISUALES PASO A PASO ({os.path.basename(planillas[0])})")
-        print("=" * 60)
-        generar_graficos_paso_a_paso(planillas[0], out_dir, mostrar=mostrar)
-
     resumen_global = []
 
     for idx_p, p in enumerate(planillas):
-        if os.path.exists(p):
-            mostrar_na = mostrar and (idx_p == 0 or len(planillas) == 1)
-            recs, no_aprob = procesar_planilla(p, out_dir, mostrar=mostrar_na)
-            total_ok = sum(1 for r in recs if all(v == "OK" for k, v in r.items() if k != "ID"))
-            resumen_global.append({
-                "archivo": os.path.basename(p),
-                "total_registros_evaluados": len(recs),
-                "registros_completamente_ok": total_ok,
-                "alumnos_no_aprobados_validos": len(no_aprob)
-            })
-        else:
+        if not os.path.exists(p):
             print(f"Advertencia: No se encontró la imagen {p}")
+            continue
+
+        sheet_name = os.path.basename(p)
+        print("\n" + "=" * 60)
+        print(f"PROCESANDO PLANILLA {idx_p + 1}/{len(planillas)}: {sheet_name}")
+        print("=" * 60)
+
+        # 1. Gráficos diagnósticos paso a paso (Rejilla y Celdas)
+        if graficos:
+            generar_graficos_paso_a_paso(p, out_dir, mostrar=False, cerrar=(not mostrar))
+
+        # 2. Procesamiento de la planilla (auditoría campo por campo, CSV y panel de no aprobados)
+        recs, no_aprob = procesar_planilla(p, out_dir, mostrar=False, cerrar=(not mostrar))
+
+        total_ok = sum(1 for r in recs if all(v == "OK" for k, v in r.items() if k != "ID"))
+        resumen_global.append({
+            "archivo": sheet_name,
+            "total_registros_evaluados": len(recs),
+            "registros_completamente_ok": total_ok,
+            "alumnos_no_aprobados_validos": len(no_aprob)
+        })
+
+        # 3. Despliegue interactivo en pantalla por planilla:
+        # Se abren las ventanas correspondientes a esta planilla (Rejilla, Celdas y No Aprobados).
+        # Al cerrar estas ventanas, el ciclo continúa automáticamente con la siguiente planilla.
+        if mostrar:
+            print(f"\n>> Mostrando gráficos de {sheet_name} en pantalla ({idx_p + 1}/{len(planillas)}) <<")
+            print(">> Cierre las ventanas de esta planilla para continuar con la siguiente...")
+            plt.show()
+            plt.close("all")
 
     print("\n" + "=" * 60)
     print("RESUMEN GENERAL DEL PROCESAMIENTO CÍCLICO (Punto d):")
