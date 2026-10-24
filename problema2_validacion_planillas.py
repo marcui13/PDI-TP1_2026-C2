@@ -29,6 +29,7 @@ import numpy as np
 # Configurar directorio temporal para caché de Matplotlib si es necesario
 os.environ.setdefault("MPLCONFIGDIR", "/tmp/matplotlib_cache")
 import matplotlib.pyplot as plt
+import matplotlib.patches as patches
 
 # Auto-detección del entorno virtual local (.venv) si no está activo
 for p in [
@@ -39,10 +40,105 @@ for p in [
         sys.path.insert(0, os.path.abspath(p))
 
 # -------------------------------------------------------------------------
-# CONSTANTES EMPÍRICAS (CALIBRADAS EXPERIMENTALMENTE A PRUEBA Y ERROR)
+# CONSTANTES EMPÍRICAS (VALORES DE RESPALDO / FALLBACK)
 # -------------------------------------------------------------------------
-UMBRAL_AREA = 2       # Área mínima (px): descarta ruido puntual y restos de líneas de la grilla
-UMBRAL_ESPACIO = 6    # Separación horizontal mínima (px) para considerar una nueva palabra
+UMBRAL_AREA = 2       # Área mínima de respaldo (px): descarta ruido puntual y restos de líneas
+UMBRAL_ESPACIO = 6    # Separación horizontal mínima de respaldo (px) para nueva palabra
+
+
+def calcular_umbral_area_dinamico(img_th, registros_coords, retornar_detalles=False):
+    """
+    Calcula dinámicamente el umbral de área mínima para filtrar ruido impulsivo
+    y restos de la grilla sin eliminar caracteres finos (como el guion '-').
+    Se calcula como una fracción (7%) del área mediana de los glifos válidos.
+    """
+    areas = []
+    for reg in registros_coords:
+        for y0, y1, x0, x1 in reg:
+            celda = img_th[y0:y1, x0:x1]
+            n, _, stats, _ = cv2.connectedComponentsWithStats(celda.astype(np.uint8), 8, cv2.CV_32S)
+            for s in stats[1:]:
+                areas.append(s[cv2.CC_STAT_AREA])
+
+    if len(areas) == 0:
+        if retornar_detalles:
+            return UMBRAL_AREA, {
+                "areas": np.array([]), "mediana_glifo": 30.0,
+                "n_total": 0, "n_descartados": 0, "umbral": UMBRAL_AREA
+            }
+        return UMBRAL_AREA
+
+    areas = np.array(areas)
+    # Filtramos componentes candidatas a caracteres (área > 3 px) para obtener el tamaño típico
+    manchas_grandes = areas[areas > 3]
+    tamano_letra_tipica = float(np.median(manchas_grandes)) if len(manchas_grandes) > 0 else float(np.median(areas))
+
+    # 7% del área mediana del glifo (mínimo 1 px para garantizar filtrado)
+    umbral = max(1, int(np.floor(tamano_letra_tipica * 0.07)))
+
+    if retornar_detalles:
+        detalles = {
+            "areas": areas,
+            "mediana_glifo": tamano_letra_tipica,
+            "n_total": len(areas),
+            "n_descartados": int(np.sum(areas <= umbral)),
+            "umbral": umbral
+        }
+        return umbral, detalles
+
+    return umbral
+
+
+def calcular_umbral_espacio_dinamico(img_th, registros_coords, umbral_area, retornar_detalles=False):
+    """
+    Calcula dinámicamente la separación horizontal mínima (gap) para segmentar palabras.
+    Se fundamenta en la relación tipográfica: el espacio inter-palabra es del orden
+    del ancho completo de un carácter, mientras que el espacio inter-letra es mucho menor.
+    Se define como el 70% del ancho mediano (W) de los caracteres de la planilla.
+    """
+    anchos_de_letras = []
+    all_gaps = []
+
+    for reg in registros_coords:
+        for y0, y1, x0, x1 in reg:
+            celda = img_th[y0:y1, x0:x1]
+            n, _, stats, _ = cv2.connectedComponentsWithStats(celda.astype(np.uint8), 8, cv2.CV_32S)
+            letras = stats[1:]
+            letras = letras[letras[:, cv2.CC_STAT_AREA] > umbral_area]
+            for letra in letras:
+                anchos_de_letras.append(letra[cv2.CC_STAT_WIDTH])
+
+            if len(letras) > 1:
+                letras_ord = letras[np.argsort(letras[:, cv2.CC_STAT_LEFT])]
+                fin_ant = letras_ord[:-1, cv2.CC_STAT_LEFT] + letras_ord[:-1, cv2.CC_STAT_WIDTH]
+                g = letras_ord[1:, cv2.CC_STAT_LEFT] - fin_ant
+                all_gaps.extend(g[g >= 0])
+
+    if len(anchos_de_letras) == 0:
+        if retornar_detalles:
+            return UMBRAL_ESPACIO, {
+                "anchos": np.array([]), "gaps": np.array([]), "ancho_tipico": 8.0,
+                "n_inter_letra": 0, "n_inter_palabra": 0, "umbral": UMBRAL_ESPACIO
+            }
+        return UMBRAL_ESPACIO
+
+    anchos = np.array(anchos_de_letras)
+    gaps = np.array(all_gaps)
+    ancho_tipico = float(np.median(anchos))
+    umbral_espacio = max(3, int(round(ancho_tipico * 0.70)))
+
+    if retornar_detalles:
+        detalles = {
+            "anchos": anchos,
+            "gaps": gaps,
+            "ancho_tipico": ancho_tipico,
+            "n_inter_letra": int(np.sum(gaps <= umbral_espacio)) if len(gaps) > 0 else 0,
+            "n_inter_palabra": int(np.sum(gaps > umbral_espacio)) if len(gaps) > 0 else 0,
+            "umbral": umbral_espacio
+        }
+        return umbral_espacio, detalles
+
+    return umbral_espacio
 
 
 def calcular_umbral_binario(img_gray):
@@ -50,6 +146,7 @@ def calcular_umbral_binario(img_gray):
     Calcula dinámicamente el umbral de binarización global mediante el método de Otsu (Unidad 3).
     Minimiza la varianza intraclasal para separar automáticamente la tinta oscura del papel claro.
     """
+    # consultar por qué se descarta la planilla de otsu
     umbral, _ = cv2.threshold(img_gray, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
     return float(umbral)
 
@@ -60,6 +157,8 @@ def determinar_campos(cols):
     de columnas detectadas en la rejilla de la planilla (excluyendo el margen y la columna de ID).
     """
     num_campos = len(cols) - 2
+    # Caso borde: si se detectaron <= 2 líneas verticales (imagen vacía o solo margen/"Nro."),
+    # no hay campos de datos válidos para procesar (evita IndexError y asignación espuria).
     if num_campos <= 0:
         return []
     if num_campos == 1:
@@ -266,8 +365,10 @@ def generar_graficos_paso_a_paso(sheet_path, output_dir, mostrar=True, cerrar=Fa
     proy_h = np.sum(img_th, axis=1)
     proy_v = np.sum(img_th, axis=0)
     filas, cols, registros_coords, campos = detectar_celdas(img_th)
-    umbral_area = UMBRAL_AREA
-    umbral_espacio = UMBRAL_ESPACIO
+    
+    # 3. Cálculo dinámico de umbrales morfológicos y de espaciado
+    umbral_area, det_area = calcular_umbral_area_dinamico(img_th, registros_coords, retornar_detalles=True)
+    umbral_espacio, det_esp = calcular_umbral_espacio_dinamico(img_th, registros_coords, umbral_area, retornar_detalles=True)
 
     # -------------------------------------------------------------------------
     # FIGURA 1: PASO A PASO DETECCIÓN DE REJILLA
@@ -461,14 +562,185 @@ def generar_graficos_paso_a_paso(sheet_path, output_dir, mostrar=True, cerrar=Fa
         plt.savefig(ruta_fig2_default, dpi=200)
     print(f"Gráfico de celdas generado: {ruta_fig2_sheet}")
 
+    # -------------------------------------------------------------------------
+    # FIGURA 3: MAPEO ESPACIAL DE CELDAS Y COORDENADAS (registros_coords)
+    # -------------------------------------------------------------------------
+    fig3 = plt.figure(figsize=(16, 11))
+    fig3.suptitle(f"Mapeo Espacial de Celdas y Coordenadas (registros_coords) - {sheet_name}", fontsize=16, fontweight='bold', y=0.99)
+    try:
+        fig3.canvas.manager.set_window_title(f"Coordenadas de Celdas - {sheet_name}")
+    except Exception:
+        pass
+
+    gs3 = fig3.add_gridspec(2, 2, width_ratios=[1.15, 1.0], height_ratios=[1.0, 1.0])
+
+    # Subplot 1 (Izquierda): Planilla completa con los bounding boxes de registros_coords
+    ax_full = fig3.add_subplot(gs3[:, 0])
+    ax_full.imshow(cv2.cvtColor(img_bgr, cv2.COLOR_BGR2RGB))
+    ax_full.set_title(
+        f"(1) Planilla Completa: Bounding Boxes de registros_coords\n"
+        f"({len(registros_coords)} registros x {len(campos)} campos = {len(registros_coords)*len(campos)} celdas)",
+        fontsize=13, fontweight='bold'
+    )
+
+    colores_campos = ['#1f77b4', '#2ca02c', '#ff7f0e', '#d62728', '#9467bd', '#e377c2']
+
+    for r_idx, celdas in enumerate(registros_coords):
+        for c_idx, (y0, y1, x0, x1) in enumerate(celdas):
+            color = colores_campos[c_idx % len(colores_campos)]
+            rect = patches.Rectangle((x0, y0), x1 - x0, y1 - y0, linewidth=1.2, edgecolor=color, facecolor=color, alpha=0.15)
+            ax_full.add_patch(rect)
+            rect_border = patches.Rectangle((x0, y0), x1 - x0, y1 - y0, linewidth=1.2, edgecolor=color, fill=False)
+            ax_full.add_patch(rect_border)
+
+    legend_patches = [patches.Patch(color=colores_campos[i % len(colores_campos)], label=campos[i]) for i in range(len(campos))]
+    ax_full.legend(handles=legend_patches, loc='lower right', fontsize=10, framealpha=0.9)
+    ax_full.set_xlabel("Coordenada X (píxeles)", fontsize=11, fontweight='bold')
+    ax_full.set_ylabel("Coordenada Y (píxeles)", fontsize=11, fontweight='bold')
+    ax_full.tick_params(axis='both', which='major', labelsize=10)
+
+    # Subplot 2 (Arriba Derecha): Zoom a las celdas del Registro 1
+    gs_zoom = gs3[0, 1].subgridspec(1, len(campos))
+    for c_idx, campo in enumerate(campos):
+        ax_z = fig3.add_subplot(gs_zoom[0, c_idx])
+        y0, y1, x0, x1 = registros_coords[0][c_idx]
+        celda_crop = img_th[y0:y1, x0:x1]
+        ax_z.imshow(celda_crop, cmap='gray')
+        ax_z.set_title(f"{campo}\ny:[{y0}:{y1}]\nx:[{x0}:{x1}]\n({y1-y0}x{x1-x0} px)", fontsize=9, fontweight='bold')
+        ax_z.axis('off')
+
+    # Subplot 3 (Abajo Derecha): Tabla de Coordenadas de registros representativos
+    ax_tbl = fig3.add_subplot(gs3[1, 1])
+    ax_tbl.axis('off')
+    ax_tbl.set_title("(3) Matriz de Coordenadas (y0, y1, x0, x1) por Registro", fontsize=13, fontweight='bold', pad=10)
+
+    registros_a_mostrar = [0, 1, 2, 3, 4, len(registros_coords) - 1]
+    col_labels = ["Reg ID", "Rango Y [y0:y1]"] + [f"{c[:7]} [x0:x1]" for c in campos]
+
+    table_data = []
+    for r_i in registros_a_mostrar:
+        y_str = f"[{registros_coords[r_i][0][0]}:{registros_coords[r_i][0][1]}]"
+        row = [f"R{r_i + 1}", y_str]
+        for c_i in range(len(campos)):
+            _, _, x0, x1 = registros_coords[r_i][c_i]
+            row.append(f"[{x0}:{x1}]")
+        table_data.append(row)
+
+    tbl = ax_tbl.table(cellText=table_data, colLabels=col_labels, loc='center', cellLoc='center')
+    tbl.auto_set_font_size(False)
+    tbl.set_fontsize(9)
+    tbl.scale(1.0, 1.4)
+
+    for k, cell in tbl.get_celld().items():
+        if k[0] == 0:
+            cell.set_facecolor('#e0e0e0')
+            cell.set_text_props(weight='bold')
+
+    plt.tight_layout()
+    ruta_fig3_sheet = os.path.join(output_dir, f"paso_a_paso_coordenadas_celdas_{base_name}.png")
+    plt.savefig(ruta_fig3_sheet, dpi=200)
+    if base_name == "grade_sheet_1":
+        ruta_fig3_default = os.path.join(output_dir, "paso_a_paso_coordenadas_celdas.png")
+        plt.savefig(ruta_fig3_default, dpi=200)
+    print(f"Gráfico de coordenadas de celdas generado: {ruta_fig3_sheet}")
+
+    # -------------------------------------------------------------------------
+    # FIGURA 4: DIAGNÓSTICO DE UMBRALES CALCULADOS DINÁMICAMENTE
+    # -------------------------------------------------------------------------
+    fig4, (ax_area, ax_esp) = plt.subplots(1, 2, figsize=(16, 6))
+    fig4.suptitle(f"Diagnóstico de Umbrales Calculados Dinámicamente ({sheet_name})", fontsize=17, fontweight='bold', y=0.98)
+    try:
+        fig4.canvas.manager.set_window_title(f"Umbrales Dinámicos - {sheet_name}")
+    except Exception:
+        pass
+
+    # (A) Subplot Izquierdo: Histograma de Áreas y UMBRAL_AREA
+    areas = det_area["areas"]
+    if len(areas) > 0:
+        max_area_plot = min(60, int(np.percentile(areas, 98) + 5))
+        bins_a = np.arange(0.5, max_area_plot + 1.5, 1)
+        counts_a, edges_a = np.histogram(areas, bins=bins_a)
+        centers_a = (edges_a[:-1] + edges_a[1:]) / 2
+
+        colores_a = []
+        for c in centers_a:
+            if c <= umbral_area:
+                colores_a.append('#d9534f')  # Rojo: Ruido descartado
+            elif c <= 6:
+                colores_a.append('#f0ad4e')  # Ámbar: Símbolos finos (guion '-')
+            else:
+                colores_a.append('#1f77b4')  # Azul: Glifos normales
+
+        ax_area.bar(centers_a, counts_a, width=0.85, color=colores_a, edgecolor='black', alpha=0.85)
+        ax_area.axvline(umbral_area, color='r', linestyle='--', lw=2.5,
+                        label=f'UMBRAL_AREA = {umbral_area} px (Corte 7%)')
+        ax_area.axvline(det_area["mediana_glifo"], color='navy', linestyle=':', lw=2.0,
+                        label=f'Mediana glifo = {det_area["mediana_glifo"]:.1f} px')
+
+        p_ruido = patches.Patch(color='#d9534f', label=f'Ruido descartado (<= {umbral_area} px): {det_area["n_descartados"]} comps.')
+        p_guion = patches.Patch(color='#f0ad4e', label='Símbolos finos / Guiones (4-6 px)')
+        p_letras = patches.Patch(color='#1f77b4', label=f'Glifos válidos: {det_area["n_total"] - det_area["n_descartados"]} comps.')
+        handles, _ = ax_area.get_legend_handles_labels()
+        ax_area.legend(handles=[p_ruido, p_guion, p_letras] + handles, loc='upper right', fontsize=11)
+
+    ax_area.set_title(
+        f"(A) Histograma de Áreas: Descarte de Ruido\n"
+        f"Mediana: {det_area['mediana_glifo']:.1f} px  ->  Umbral Área: {umbral_area} px",
+        fontsize=13, fontweight='bold'
+    )
+    ax_area.set_xlabel("Área de componente conexa (píxeles)", fontsize=12, fontweight='bold')
+    ax_area.set_ylabel("Cantidad de componentes", fontsize=12, fontweight='bold')
+    ax_area.grid(True, alpha=0.3, axis='y')
+
+    # (B) Subplot Derecho: Histograma de Gaps y UMBRAL_ESPACIO
+    gaps = det_esp["gaps"]
+    if len(gaps) > 0:
+        max_gap_plot = max(14, int(np.max(gaps)) + 1)
+        bins_g = np.arange(-0.5, max_gap_plot + 1.5, 1)
+        counts_g, edges_g = np.histogram(gaps, bins=bins_g)
+        centers_g = (edges_g[:-1] + edges_g[1:]) / 2
+
+        colores_g = ['#5bc0de' if c <= umbral_espacio else '#d9534f' for c in centers_g]
+        ax_esp.bar(centers_g, counts_g, width=0.85, color=colores_g, edgecolor='black', alpha=0.85)
+        ax_esp.axvline(umbral_espacio, color='r', linestyle='--', lw=2.5,
+                       label=f'UMBRAL_ESPACIO = {umbral_espacio} px (Corte 70% W)')
+        ax_esp.axvline(det_esp["ancho_tipico"], color='darkgreen', linestyle=':', lw=2.0,
+                       label=f'Ancho mediano W = {det_esp["ancho_tipico"]:.1f} px')
+
+        p_inter_letra = patches.Patch(color='#5bc0de', label=f'Inter-letra (<= {umbral_espacio} px): {det_esp["n_inter_letra"]} gaps')
+        p_inter_palabra = patches.Patch(color='#d9534f', label=f'Inter-palabra (> {umbral_espacio} px): {det_esp["n_inter_palabra"]} gaps')
+        handles_g, _ = ax_esp.get_legend_handles_labels()
+        ax_esp.legend(handles=[p_inter_letra, p_inter_palabra] + handles_g, loc='upper right', fontsize=11)
+
+    ax_esp.set_title(
+        f"(B) Distribución Bimodal de Gaps Horizontales\n"
+        f"Ancho W: {det_esp['ancho_tipico']:.1f} px  ->  Umbral Espacio: {umbral_espacio} px",
+        fontsize=13, fontweight='bold'
+    )
+    ax_esp.set_xlabel("Distancia horizontal entre caracteres (px)", fontsize=12, fontweight='bold')
+    ax_esp.set_ylabel("Cantidad de huecos (gaps)", fontsize=12, fontweight='bold')
+    ax_esp.grid(True, alpha=0.3, axis='y')
+
+    plt.tight_layout()
+    ruta_fig4_sheet = os.path.join(output_dir, f"paso_a_paso_umbrales_dinamicos_{base_name}.png")
+    plt.savefig(ruta_fig4_sheet, dpi=200)
+    if base_name == "grade_sheet_1":
+        ruta_fig4_default = os.path.join(output_dir, "paso_a_paso_umbrales_dinamicos.png")
+        plt.savefig(ruta_fig4_default, dpi=200)
+    print(f"Gráfico de umbrales dinámicos generado: {ruta_fig4_sheet}")
+
     if mostrar:
         print(f"Mostrando figuras de diagnóstico ({sheet_name}) en pantalla (cierre las ventanas para continuar)...")
         plt.show()
         plt.close(fig1)
         plt.close(fig2)
+        plt.close(fig3)
+        plt.close(fig4)
     elif cerrar:
         plt.close(fig1)
         plt.close(fig2)
+        plt.close(fig3)
+        plt.close(fig4)
 
 
 def procesar_planilla(sheet_path, output_dir, mostrar=False, cerrar=False):
@@ -491,16 +763,29 @@ def procesar_planilla(sheet_path, output_dir, mostrar=False, cerrar=False):
     img_th = img_gray < umbral_binario
 
     # 2. Detección de celdas y campos dinámicos mediante proyecciones 1D
-    filas, cols, registros_coords, campos = detectar_celdas(img_th)
+    _, _, registros_coords, campos = detectar_celdas(img_th)
 
-    print("\n" + "=" * 60)
+    # 3. Cálculo dinámico de umbrales morfológicos y de espaciado
+    umbral_area, det_area = calcular_umbral_area_dinamico(img_th, registros_coords, retornar_detalles=True)
+    umbral_espacio, det_esp = calcular_umbral_espacio_dinamico(img_th, registros_coords, umbral_area, retornar_detalles=True)
+
+    print("\n" + "=" * 65)
     print(f"VALIDACIÓN DE PLANILLA: {sheet_name}")
-    print(f"  [Parámetros de procesamiento]")
-    print(f"  - Umbral binario (Otsu dinámico): {umbral_binario:.1f}")
-    print(f"  - Umbral de área mínima (constante): {UMBRAL_AREA} px")
-    print(f"  - Umbral de espacio entre palabras (constante): {UMBRAL_ESPACIO} px")
-    print(f"  - Campos detectados ({len(campos)}): {', '.join(campos)}")
-    print("=" * 60)
+    print("=" * 65)
+    print("  [Cálculo Dinámico de Umbrales - Invariantes de Escala (Unidades 1 a 3)]")
+    print(f"  * Binarización Global (Otsu dinámico): umbral = {umbral_binario:.1f}")
+    print(f"  * UMBRAL_AREA dinámico: {umbral_area} px")
+    print(f"      - Componentes analizadas: {det_area['n_total']}")
+    print(f"      - Mediana del área de glifos típicos: {det_area['mediana_glifo']:.1f} px")
+    print(f"      - Criterio de corte: 7% de la mediana ({det_area['mediana_glifo'] * 0.07:.2f} px -> {umbral_area} px)")
+    print(f"      - Componentes de ruido descartadas: {det_area['n_descartados']} (área <= {umbral_area} px)")
+    print(f"  * UMBRAL_ESPACIO dinámico: {umbral_espacio} px")
+    print(f"      - Mediana del ancho de caracter (W): {det_esp['ancho_tipico']:.1f} px")
+    print(f"      - Criterio tipográfico: 70% de W ({det_esp['ancho_tipico'] * 0.70:.2f} px -> {umbral_espacio} px)")
+    print(f"      - Gaps inter-letra: {det_esp['n_inter_letra']} (distancia <= {umbral_espacio} px)")
+    print(f"      - Gaps inter-palabra: {det_esp['n_inter_palabra']} (distancia > {umbral_espacio} px)")
+    print(f"  * Campos detectados ({len(campos)}): {', '.join(campos)}")
+    print("=" * 65)
     registros_csv = []
     alumnos_no_aprobados = []
 
@@ -514,7 +799,7 @@ def procesar_planilla(sheet_path, output_dir, mostrar=False, cerrar=False):
         celdas_bin = [img_th[y0:y1, x0:x1] for (y0, y1, x0, x1) in celdas_coords]
 
         for campo, celda_bin in zip(campos, celdas_bin):
-            n_chars, n_words = contar(celda_bin)
+            n_chars, n_words = contar(celda_bin, umbral_area=umbral_area, umbral_espacio=umbral_espacio)
             estado = validar(campo, n_chars, n_words)
             print(f"> {campo}: {estado}")
             estados_registro.append(estado)
@@ -530,7 +815,7 @@ def procesar_planilla(sheet_path, output_dir, mostrar=False, cerrar=False):
         # Punto b: Solo registros 100% OK con condición 'L' o 'R'
         if all(e == "OK" for e in estados_registro):
             cond_idx = campos.index("Condición Final") if "Condición Final" in campos else -1
-            condicion = clasificar_condicion(celdas_bin[cond_idx])
+            condicion = clasificar_condicion(celdas_bin[cond_idx], umbral_area=umbral_area)
             if condicion in ("L", "R"):
                 nom_idx = campos.index("Nombre y apellido") if "Nombre y apellido" in campos else 1
                 y0, y1, x0, x1 = celdas_coords[nom_idx]
