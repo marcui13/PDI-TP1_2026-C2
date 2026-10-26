@@ -146,7 +146,6 @@ def calcular_umbral_binario(img_gray):
     Calcula dinámicamente el umbral de binarización global mediante el método de Otsu (Unidad 3).
     Minimiza la varianza intraclasal para separar automáticamente la tinta oscura del papel claro.
     """
-    # consultar por qué se descarta la planilla de otsu
     umbral, _ = cv2.threshold(img_gray, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
     return float(umbral)
 
